@@ -31,4 +31,6 @@ router.get('/:id/stream', auth, mediaController.streamMedia);
 // Protected download
 router.get('/:id/download', auth, mediaController.downloadMedia);
 
+router.get('/trending', mediaController.getTrendingMedia);
+
 module.exports = router;

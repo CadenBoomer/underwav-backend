@@ -167,7 +167,7 @@ exports.updateMedia = async (req, res) => {
 
       // Remove old genre links
       //Deletes all previous links between this media and genres.
-// Prevents duplicates and ensures the update fully replaces old genres.
+      // Prevents duplicates and ensures the update fully replaces old genres.
       await pool.query('DELETE FROM media_genres WHERE media_id = ?', [mediaId]);
 
       // Add new ones
@@ -346,3 +346,29 @@ exports.downloadMedia = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+//Views count as 1 point each
+// Likes count more because they indicate engagement
+// Comments count the most because they’re even more interactive
+
+//score = views + (likes * 2) + (comments * 3)
+exports.getTrendingMedia = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      //ORDER BY score DESC sorts by trending.
+      // LIMIT 20 returns the top 20 trending items.
+      `SELECT 
+        m.*,
+        (m.views + m.likes_count * 2 + m.comments_count * 3) AS score
+      FROM media m
+      WHERE m.is_public = 1
+      ORDER BY score DESC
+      LIMIT 20
+    `
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Trending media error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+}
