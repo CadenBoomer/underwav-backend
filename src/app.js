@@ -29,7 +29,7 @@ const likesRoutes = require('./routes/likesRoutes');
 const commentsRoutes = require('./routes/commentsRoutes');
 const playlistRoutes = require('./routes/playlistRoutes');
 const followsRoutes = require('./routes/followsRoutes');
-const mediaRoutes = require('./routes/mediaRoutes');
+const searchRoutes = require('./routes/searchRoutes');
 
 
 //Use Routes
@@ -40,6 +40,7 @@ app.use('/api/genres', genreRoutes);
 app.use('/api/comments', commentsRoutes);
 app.use('/api/playlists', playlistRoutes);
 app.use('/api/follows', followsRoutes);
+app.use('/api/search', searchRoutes)
 
 
 // Test route

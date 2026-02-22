@@ -2,6 +2,8 @@ const pool = require('../config/db'); // make sure this is mysql2/promise connec
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const sendEmail = require('../utils/email');
+
 
 
 //jwt: 
@@ -112,7 +114,7 @@ exports.signup = async (req, res) => {
     if (existing.length > 0)
       return res.status(400).json({ message: 'Email already exists' });
 
-    // Hash password
+    // Hash password. Salting 10. 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user (unverified by default)
@@ -132,8 +134,19 @@ exports.signup = async (req, res) => {
       [userId, token, expiresAt]
     );
 
-    // For now, just log it (capstone-friendly)
-    console.log(`Verify email: http://localhost:3000/api/auth/verify-email/${token}`);
+    // Send Verification Email
+    await sendEmail(
+      email,
+      "Verify your Underwav account",
+      `
+    <h2>Welcome to Underwav 🎵</h2>
+    <p>Click the link below to verify your email:</p>
+    <a href="http://localhost:3000/api/auth/verify-email/${token}">
+      Verify Email
+    </a>
+    <p>This link expires in 1 hour.</p>
+  `
+    );
 
     res.status(201).json({
       message: 'User created. Please verify your email.',
@@ -261,7 +274,7 @@ exports.getProfile = async (req, res) => {
     //Get user ID from JWT
     const userId = req.user.id;
 
-    //Query the database
+    //Query the database. MYSQL returns[ rows, fields ]. We only need rows.
     const [rows] = await pool.query('SELECT id, username, email, first_name, last_name, address, city, country, phone, bio, avatar FROM users WHERE id = ?', [userId]);
 
     if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
@@ -270,16 +283,26 @@ exports.getProfile = async (req, res) => {
     console.error('Get profile error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
-}
+};
 
 //Update Profile
 
 exports.updateProfile = async (req, res) => {
   const userId = req.user.id;
+
+  //Pull fields from request.
+  // If client sends only { bio: "hello" }
+  // then: username = undefined 
+  // avatar = undefined
   const { username, email, first_name, last_name, address, city, country, phone, bio, avatar } = req.body;
 
+  //COALESCE(value, column)
+  // Means:
+  // If value is NOT null → use it
+  // If value IS null → keep existing column value. Basically stops overwriting the file if a specific field wasnt updated. 
   try {
     const [result] = await pool.query('UPDATE users SET username = COALESCE(?, username), email = COALESCE(?, email), first_name = COALESCE(?, first_name), last_name = COALESCE(?, last_name), address = COALESCE(?, address), city = COALESCE(?, city), country = COALESCE(?, country), phone = COALESCE(?, phone), bio = COALESCE(?, bio), avatar = COALESCE(?, avatar) WHERE id = ?',
+      //Values passed into query.
       [username, email, first_name, last_name, address, city, country, phone, bio, avatar, userId]);
 
     if (result.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
@@ -291,7 +314,7 @@ exports.updateProfile = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 
-}
+};
 
 //Forgot Password
 exports.forgotPassword = async (req, res) => {
@@ -304,7 +327,10 @@ exports.forgotPassword = async (req, res) => {
     // Returns matching rows.
     const [rows] = await pool.query('SELECT id FROM users WHERE email = ?', [email]
     );
-    if (rows.length === 0) return res.status(400).json({ message: 'User not found' });
+    if (rows.length === 0) {
+      return res.status(200).json({ message: 'If that email exists, a reset link was sent.' });
+    }
+
 
     //Gets the user’s ID.
     // Needed to link the reset token to the user.
@@ -320,12 +346,50 @@ exports.forgotPassword = async (req, res) => {
 
     //Stores reset token in database.
     await pool.query('INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)', [userId, token, expiresAt]);
-    console.log(`Reset password: http://localhost:3000/api/auth/reset-password/${token}`);
+    await sendEmail(email,
+      "Reset Your Underwav Password",
+      `
+    <h2>Password Reset</h2>
+    <p>Click below to reset your password:</p>
+    <a href="http://localhost:3000/api/auth/reset-password/${token}">
+      Reset Password
+    </a>
+    <p>This link expires in 1 hour.</p>
+  `
+    );
+
 
     res.status(200).json({ message: 'Password reset link sent to email' });
   } catch (err) {
     console.error('Forgot password error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+
+// Show reset password form in browser
+exports.showResetPasswordForm = async (req, res) => {
+  const { token } = req.params;
+  try {
+    const [rows] = await pool.query(
+      'SELECT user_id, expires_at FROM password_reset_tokens WHERE token = ?',
+      [token]
+    );
+    if (rows.length === 0) return res.send('Invalid or expired token');
+
+    const tokenRow = rows[0];
+    if (new Date(tokenRow.expires_at) < new Date()) return res.send('Token expired');
+
+    // Show a simple HTML form
+    res.send(`
+      <form action="/api/auth/reset-password/${token}" method="POST">
+        <input name="newPassword" type="password" placeholder="New password" required />
+        <button type="submit">Reset Password</button>
+      </form>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.send('Server error');
   }
 };
 
@@ -371,8 +435,6 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 };
-
-
 
 //Update Password
 
@@ -422,8 +484,11 @@ exports.deleteProfile = async (req, res) => {
 
     // Delete each media file from disk
     mediaRows.forEach(file => {
+      //Delete files from disk
       const filepath = path.join(__dirname, '..', 'uploads', file.type, file.filename);
+      //Checks if file exists.
       if (fs.existsSync(filepath)) {
+        //fs.unlinkSync(filePath). Deletes file.
         fs.unlinkSync(filepath);
       }
     });
@@ -481,7 +546,19 @@ exports.requestEmailChange = async (req, res) => {
     await pool.query('INSERT INTO email_change_tokens (user_id, new_email, token, expires_at) VALUES (?, ?, ?, ?)',
       [userId, newEmail, token, expiresAt]
     );
-    console.log(`Confirm email change: http://localhost:3000/api/auth/confirm-email-change/${token}`);
+
+    await sendEmail(
+      newEmail,
+      "Confirm Your New Underwav Email",
+      `
+    <h2>Confirm Email Change</h2>
+    <p>Click below to confirm your new email address:</p>
+    <a href="http://localhost:3000/api/auth/confirm-email-change/${token}">
+      Confirm Email
+    </a>
+    <p>This link expires in 1 hour.</p>
+  `
+    );
 
     res.status(200).json({ message: 'Email change request sent' });
   } catch (err) {

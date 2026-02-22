@@ -113,14 +113,19 @@ exports.createComment = async (req, res) => {
         if (!content) {
             return res.status(400).json({ message: 'Comment is required' })
         }
-        await pool.query('INSERT INTO comments (user_id, media_id, content) VALUES (?, ?, ?)', [userId, mediaId, content])
-        res.status(201).json({ message: 'Comment created successfully' })
 
         //MySQL insert using parameterized query (?) to prevent SQL injection.
         // Adds a row to comments with:
         // user_id = logged-in user
         // media_id = the media being commented on
         // content = the text of the comment
+
+        await pool.query('INSERT INTO comments (user_id, media_id, content) VALUES (?, ?, ?)', [userId, mediaId, content])
+
+        //Increases comment count on specific media
+        await pool.query('UPDATE media SET comments = comments + 1 WHERE id = ?', [mediaId])
+
+        res.status(201).json({ message: 'Comment created successfully' })
 
     } catch (err) {
         console.error(err)
@@ -135,7 +140,7 @@ exports.getComments = async (req, res) => {
         //Same as before, grabs mediaId from route.
         const [rows] = await pool.query('SELECT c.id, c.content, c.created_at, u.username FROM comments c JOIN users u ON c.user_id = u.id WHERE c.media_id = ?', [mediaId]
 
-            //             Step by step MySQL breakdown:
+            //Step by step MySQL breakdown:
 
             // SELECT c.id, c.content, c.created_at, u.username → only fetches these columns.
 
@@ -154,8 +159,21 @@ exports.getComments = async (req, res) => {
             // const [rows] = ... → destructuring; MySQL query returns [rows, fields].
 
         );
-        res.json(rows)
-        //        res.json(rows)
+
+        // Returns all the individual comments for that media.
+        // Each row = one comment.
+        const [countRows] = await pool.query(
+            'SELECT comment_count FROM media WHERE id = ?',
+            [mediaId]
+            
+        );
+
+        if (!countRows[0]) return res.status(404).json({ message: 'Media not found' });
+
+        res.json({
+            totalComments: countRows[0].comment_count,
+            comments: rows
+        });
 
 
     } catch (err) {
@@ -170,9 +188,29 @@ exports.deleteComment = async (req, res) => {
     try {
         const userId = req.user.id
         const { commentId } = req.params
+
+        // Find the media ID for this comment
+         const [[comment]] = await pool.query(
+            'SELECT media_id FROM comments WHERE id = ?',
+            [commentId]
+         );
+
+           if (!comment) {
+            return res.status(404).json({ message: 'Comment not found' });
+        }
+
+        // // Now we have mediaId
+         const mediaId = comment.media_id; 
+
         //Gets logged-in user and the comment ID from the route (/api/comments/:mediaId/:commentId).
         const [result] = await pool.query('DELETE FROM comments WHERE id = ? AND user_id = ?', [commentId, userId]
 
+        );
+
+        // Decrement comment_count when comment is deleted
+        await pool.query(
+            'UPDATE media SET comment_count = comment_count - 1 WHERE id = ? AND comment_count > 0',
+            [mediaId]
         );
         if (result.affectedRows === 0) {
             //Deletes the comment only if the logged-in user owns it.

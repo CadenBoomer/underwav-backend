@@ -24,7 +24,14 @@ exports.like = async (req, res) => {
 
         //insert a new like record and return success.
         await pool.query('INSERT INTO likes (user_id, media_id) VALUES (?, ?)', [userId, mediaId]);
-        res.status(200).json({ message: 'Media liked successfully' });
+
+        //Increase like count
+        await pool.query('UPDATE media SET likes_count = likes_count + 1 WHERE id = ?', [mediaId]);
+
+        //Get updated like count
+        const [[media]] = await pool.query('SELECT likes_count FROM media WHERE id = ?', [mediaId]);
+
+        res.status(200).json({ message: 'Media liked successfully', likesCount: media.likes_count });
 
     } catch (err) {
         console.error(err);
@@ -50,7 +57,13 @@ exports.unlike = async (req, res) => {
             return res.status(400).json({ message: 'Media not liked' });
         }
 
-        res.json({ message: 'Media unliked successfully' });
+        await pool.query('UPDATE media SET likes_count = likes_count - 1 WHERE id = ? AND likes_count > 0', [mediaId]);
+
+        // Get updated like count
+        const [[media]] = await pool.query('SELECT likes_count FROM media WHERE id = ?', [mediaId]);
+
+        res.json({ message: 'Media unliked successfully', likesCount: media.likes_count });
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
@@ -94,7 +107,7 @@ exports.getLikes = async (req, res) => {
 
             //Get all users who liked this media
             // Returns their id and username only.
-            
+
             `SELECT u.id, u.username
              FROM likes l
              JOIN users u ON l.user_id = u.id

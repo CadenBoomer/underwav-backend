@@ -37,7 +37,7 @@ const pool = require('../config/db');
 
 // MySQL can insert all these rows in one query:
 // INSERT INTO media_genres (media_id, genre_id) VALUES (5, 2), (5, 4);
-// ✅ This is a super-efficient way to link a media to multiple genres at once.
+// This is a super-efficient way to link a media to multiple genres at once.
 
 // Dashboard
 exports.dashboard = (req, res) => {
@@ -294,6 +294,11 @@ exports.streamMedia = async (req, res) => {
       return res.status(404).json({ message: 'File not found on server' });
     }
 
+    //Increases view count on media
+    await pool.query(
+      'UPDATE media SET views = views + 1 WHERE id = ?',
+      [mediaId]
+    )
     // Streams file to client
     // Browser behavior:
     // - Audio → plays inline
