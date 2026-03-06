@@ -271,12 +271,13 @@ exports.login = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
   try {
-    //Get user ID from JWT
     const userId = req.user.id;
-
-    //Query the database. MYSQL returns[ rows, fields ]. We only need rows.
-    const [rows] = await pool.query('SELECT id, username, email, first_name, last_name, address, city, country, phone, bio, avatar FROM users WHERE id = ?', [userId]);
-
+    const [rows] = await pool.query(
+      `SELECT id, username, email, first_name, last_name, address, city, country, 
+              phone, bio, avatar, show_email 
+       FROM users WHERE id = ?`,
+      [userId]
+    );
     if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
     res.json(rows[0]);
   } catch (err) {
@@ -294,16 +295,29 @@ exports.updateProfile = async (req, res) => {
   // If client sends only { bio: "hello" }
   // then: username = undefined 
   // avatar = undefined
-  const { username, email, first_name, last_name, address, city, country, phone, bio, avatar } = req.body;
+  const { username, email, first_name, last_name, address, city, country, phone, bio, avatar, show_email } = req.body;
 
   //COALESCE(value, column)
   // Means:
   // If value is NOT null → use it
   // If value IS null → keep existing column value. Basically stops overwriting the file if a specific field wasnt updated. 
   try {
-    const [result] = await pool.query('UPDATE users SET username = COALESCE(?, username), email = COALESCE(?, email), first_name = COALESCE(?, first_name), last_name = COALESCE(?, last_name), address = COALESCE(?, address), city = COALESCE(?, city), country = COALESCE(?, country), phone = COALESCE(?, phone), bio = COALESCE(?, bio), avatar = COALESCE(?, avatar) WHERE id = ?',
-      //Values passed into query.
-      [username, email, first_name, last_name, address, city, country, phone, bio, avatar, userId]);
+    const [result] = await pool.query(
+      `UPDATE users SET 
+    username = COALESCE(?, username), 
+    email = COALESCE(?, email), 
+    first_name = COALESCE(?, first_name), 
+    last_name = COALESCE(?, last_name), 
+    address = COALESCE(?, address), 
+    city = COALESCE(?, city), 
+    country = COALESCE(?, country), 
+    phone = COALESCE(?, phone), 
+    bio = COALESCE(?, bio), 
+    avatar = COALESCE(?, avatar),
+    show_email = ?
+   WHERE id = ?`,
+      [username, email, first_name, last_name, address, city, country, phone, bio, avatar, show_email ?? 0, userId]
+    );
 
     if (result.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
 
@@ -592,5 +606,84 @@ exports.confirmEmailChange = async (req, res) => {
   } catch (err) {
     console.error('Confirm email change error:', err.message);
     res.status(500).json({ message: 'Server error', error: err.message });
+  }
+};
+
+// Suggested Artists
+exports.getSuggestedArtists = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await pool.query(
+      `SELECT u.id, u.username, u.avatar,
+              COUNT(m.id) as track_count
+       FROM users u
+       JOIN media m ON u.id = m.user_id
+       WHERE m.is_public = 1
+       AND u.id != ?
+       AND u.id NOT IN (
+         SELECT following_id FROM follows WHERE follower_id = ?
+       )
+       GROUP BY u.id
+       ORDER BY track_count DESC
+       LIMIT 10`,
+      [userId, userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Suggested artists error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Get public profile by ID
+exports.getPublicProfile = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id, username, avatar, bio, city, country, created_at,
+              CASE WHEN show_email = 1 THEN email ELSE NULL END as email
+       FROM users WHERE id = ?`,
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Public profile error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Check if logged-in user follows this profile
+exports.checkFollowing = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT id FROM follows WHERE follower_id = ? AND following_id = ?`,
+      [req.user.id, req.params.id]
+    );
+    res.json({ isFollowing: rows.length > 0 });
+  } catch (err) {
+    console.error('Check following error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+exports.updateAvatar = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const file = req.file;
+
+    if (!file) return res.status(400).json({ message: 'No file uploaded' });
+
+    await pool.query(
+      'UPDATE users SET avatar = ? WHERE id = ?',
+      [file.filename, userId]
+    );
+
+    res.json({
+      message: 'Avatar updated',
+      avatar: `http://localhost:3000/uploads/images/${file.filename}`
+    });
+  } catch (err) {
+    console.error('Avatar update error:', err.message);
+    res.status(500).json({ message: 'Server error' });
   }
 };

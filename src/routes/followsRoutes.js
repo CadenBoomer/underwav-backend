@@ -19,4 +19,7 @@ router.get('/followers', auth, followsController.getFollowers)
 router.get('/following', auth, followsController.getFollowing)
 
 
+router.get('/followers/:userId', followsController.getFollowersByUserId);
+router.get('/following/:userId', followsController.getFollowingByUserId);
+
 module.exports = router;

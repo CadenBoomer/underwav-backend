@@ -18,4 +18,7 @@ router.delete('/:mediaId/:commentId', auth, commentsController.deleteComment)
 //This is for editing a comment
 router.patch('/:commentId', auth, commentsController.editComment)
 
+router.post('/:commentId/like', auth, commentsController.likeComment);
+router.delete('/:commentId/like', auth, commentsController.unlikeComment);
+
 module.exports = router;

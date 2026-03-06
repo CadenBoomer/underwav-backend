@@ -123,7 +123,7 @@ exports.createComment = async (req, res) => {
         await pool.query('INSERT INTO comments (user_id, media_id, content) VALUES (?, ?, ?)', [userId, mediaId, content])
 
         //Increases comment count on specific media
-        await pool.query('UPDATE media SET comments = comments + 1 WHERE id = ?', [mediaId])
+        await pool.query('UPDATE media SET comment_count = comment_count + 1 WHERE id = ?', [mediaId])
 
         res.status(201).json({ message: 'Comment created successfully' })
 
@@ -252,3 +252,48 @@ exports.editComment = async (req, res) => {
         res.status(500).json({ error: err.message })
     }
 }
+
+// Like a comment
+exports.likeComment = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { commentId } = req.params;
+
+    const [existing] = await pool.query(
+      'SELECT * FROM comment_likes WHERE user_id = ? AND comment_id = ?',
+      [userId, commentId]
+    );
+    if (existing.length > 0) return res.status(400).json({ message: 'Already liked' });
+
+    await pool.query('INSERT INTO comment_likes (user_id, comment_id) VALUES (?, ?)', [userId, commentId]);
+    await pool.query('UPDATE comments SET likes_count = likes_count + 1 WHERE id = ?', [commentId]);
+
+    const [[comment]] = await pool.query('SELECT likes_count FROM comments WHERE id = ?', [commentId]);
+    res.json({ message: 'Comment liked', likesCount: comment.likes_count });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Unlike a comment
+exports.unlikeComment = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { commentId } = req.params;
+
+    const [result] = await pool.query(
+      'DELETE FROM comment_likes WHERE user_id = ? AND comment_id = ?',
+      [userId, commentId]
+    );
+    if (result.affectedRows === 0) return res.status(400).json({ message: 'Not liked' });
+
+    await pool.query('UPDATE comments SET likes_count = likes_count - 1 WHERE id = ? AND likes_count > 0', [commentId]);
+
+    const [[comment]] = await pool.query('SELECT likes_count FROM comments WHERE id = ?', [commentId]);
+    res.json({ message: 'Comment unliked', likesCount: comment.likes_count });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};

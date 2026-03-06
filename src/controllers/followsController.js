@@ -101,3 +101,35 @@ exports.getFollowing = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// Get followers of any user by ID
+exports.getFollowersByUserId = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.id, u.username, u.avatar 
+       FROM follows f 
+       JOIN users u ON f.follower_id = u.id 
+       WHERE f.following_id = ?`,
+      [req.params.userId]
+    );
+    res.status(200).json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Get following of any user by ID
+exports.getFollowingByUserId = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT u.id, u.username, u.avatar 
+       FROM follows f 
+       JOIN users u ON f.following_id = u.id 
+       WHERE f.follower_id = ?`,
+      [req.params.userId]
+    );
+    res.status(200).json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};

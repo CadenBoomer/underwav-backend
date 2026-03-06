@@ -28,7 +28,8 @@ folders.forEach(folder => {
 // Allowed MIME types (production-level restriction)
 const allowedTypes = [
     // Audio
-    'audio/mpeg',   // mp3
+    'audio/mpeg',  // mp3
+    'audio/mp3',
     'audio/wav',
     'audio/x-wav',
 
