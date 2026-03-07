@@ -4,21 +4,17 @@ const router = express.Router();
 const auth = require('../middleware/authMiddleware');
 const commentsController = require('../controllers/commentsController');
 
-console.log('Comments routes loaded');
+// Static routes FIRST
+router.post('/like-status', auth, commentsController.getCommentLikeStatus);
 
-//This routing is for posting a comment
-router.post('/:mediaId', auth, commentsController.createComment)
+// Comment likes - before /:mediaId/:commentId
+router.post('/comment/:commentId/like', auth, commentsController.likeComment);
+router.delete('/comment/:commentId/like', auth, commentsController.unlikeComment);
 
-// This is for getting comments
-router.get('/:mediaId', commentsController.getComments)
-
-//This is for deleting a comment
-router.delete('/:mediaId/:commentId', auth, commentsController.deleteComment)
-
-//This is for editing a comment
-router.patch('/:commentId', auth, commentsController.editComment)
-
-router.post('/:commentId/like', auth, commentsController.likeComment);
-router.delete('/:commentId/like', auth, commentsController.unlikeComment);
+// Media comment routes
+router.post('/:mediaId', auth, commentsController.createComment);
+router.get('/:mediaId', commentsController.getComments);
+router.delete('/:mediaId/:commentId', auth, commentsController.deleteComment);
+router.patch('/:commentId', auth, commentsController.editComment);
 
 module.exports = router;

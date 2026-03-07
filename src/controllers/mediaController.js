@@ -379,6 +379,38 @@ exports.streamMedia = async (req, res) => {
   }
 };
 
+exports.streamMediaPublic = async (req, res) => {
+  try {
+    const mediaId = parseInt(req.params.id);
+
+    const [rows] = await pool.query(
+      `SELECT filename, type FROM media WHERE id = ? AND is_public = 1`,
+      [mediaId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Media not found or not public' });
+    }
+
+    const { filename, type } = rows[0];
+    const filePath = path.join(__dirname, '../../uploads', type, filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ message: 'File not found on server' });
+    }
+
+    // Only increment on first load not seeking
+    if (!req.headers.range) {
+      await pool.query('UPDATE media SET views = views + 1 WHERE id = ?', [mediaId]);
+    }
+
+    res.sendFile(filePath);
+  } catch (err) {
+    console.error('Stream error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // Protected Download (Owner or Public)
 exports.downloadMedia = async (req, res) => {
   try {
@@ -441,13 +473,16 @@ exports.getTrendingMedia = async (req, res) => {
 };
 
 // Recently Uploaded (public)
+// Recently Uploaded (public)
 exports.getRecentPublic = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, title, filename, cover_image, views, likes_count, comment_count
-       FROM media
-       WHERE is_public = 1 AND type = 'audio'
-       ORDER BY created_at DESC
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
+              m.comment_count, m.user_id, u.username as artist
+       FROM media m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.is_public = 1 AND m.type = 'audio'
+       ORDER BY m.created_at DESC
        LIMIT 10`
     );
     res.json(rows);
@@ -461,12 +496,13 @@ exports.getRecentPublic = async (req, res) => {
 exports.getTrendingThisWeek = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, title, filename, cover_image, views, likes_count, comment_count,
-  (views + likes_count * 2 + comment_count * 3) AS score
-       FROM media
-       WHERE is_public = 1
-       AND type = 'audio'
-       AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
+              m.comment_count, m.user_id, u.username as artist,
+              (m.views + m.likes_count * 2 + m.comment_count * 3) AS score
+       FROM media m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.is_public = 1 AND m.type = 'audio'
+       AND m.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
        ORDER BY score DESC
        LIMIT 10`
     );
@@ -477,32 +513,16 @@ exports.getTrendingThisWeek = async (req, res) => {
   }
 };
 
-exports.getTracksByGenre = async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count
-       FROM media m
-       JOIN media_genres mg ON m.id = mg.media_id
-       WHERE mg.genre_id = ? AND m.is_public = 1 AND m.type = 'audio'
-       ORDER BY m.created_at DESC
-       LIMIT 20`,
-      [req.params.id]
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error('Genre tracks error:', err.message);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
 // Most Viewed (public)
 exports.getMostViewed = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, title, filename, cover_image, views, likes_count, comment_count
-       FROM media
-       WHERE is_public = 1 AND type = 'audio'
-       ORDER BY views DESC
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
+              m.comment_count, m.user_id, u.username as artist
+       FROM media m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.is_public = 1 AND m.type = 'audio'
+       ORDER BY m.views DESC
        LIMIT 10`
     );
     res.json(rows);
@@ -517,8 +537,8 @@ exports.getFollowedTracks = async (req, res) => {
   try {
     const userId = req.user.id;
     const [rows] = await pool.query(
-      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, m.comment_count,
-              u.username as artist
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
+              m.comment_count, m.user_id, u.username as artist
        FROM media m
        JOIN follows f ON m.user_id = f.following_id
        JOIN users u ON m.user_id = u.id
@@ -540,7 +560,7 @@ exports.getGenreMix = async (req, res) => {
     const userId = req.user.id;
     const [rows] = await pool.query(
       `SELECT DISTINCT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count,
-              u.username as artist
+              m.created_at, m.user_id, u.username as artist
        FROM media m
        JOIN media_genres mg ON m.id = mg.media_id
        JOIN users u ON m.user_id = u.id
@@ -577,6 +597,26 @@ exports.getPublicUserTracks = async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error('Public user tracks error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Tracks by genre
+
+exports.getTracksByGenre = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count
+       FROM media m
+       JOIN media_genres mg ON m.id = mg.media_id
+       WHERE mg.genre_id = ? AND m.is_public = 1 AND m.type = 'audio'
+       ORDER BY m.created_at DESC
+       LIMIT 20`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Genre tracks error:', err.message);
     res.status(500).json({ message: 'Server error' });
   }
 };

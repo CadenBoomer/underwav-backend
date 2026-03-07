@@ -17,7 +17,7 @@ module.exports = async function (req, res, next) {
     // split(' ')[1] grabs just the token part.
 
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const token = req.headers.authorization?.split(' ')[1] || req.query.token;
 
     //If no token is sent, return 401 Unauthorized.
     // Stops the request here.

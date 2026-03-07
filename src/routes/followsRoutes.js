@@ -10,7 +10,7 @@ console.log('Follows routes loaded');
 router.post('/follow/:userId', auth, followsController.follow)
 
 //Unfollow a user
-router.delete('/unfallow/:userId', auth, followsController.unfollow)
+router.delete('/unfollow/:userId', auth, followsController.unfollow)
 
 //Get followers
 router.get('/followers', auth, followsController.getFollowers)
