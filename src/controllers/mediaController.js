@@ -478,7 +478,7 @@ exports.getRecentPublic = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
-              m.comment_count, m.user_id, u.username as artist
+              m.comment_count, m.user_id, m.description, m.lyrics, u.username as artist
        FROM media m
        JOIN users u ON m.user_id = u.id
        WHERE m.is_public = 1 AND m.type = 'audio'
@@ -497,7 +497,7 @@ exports.getTrendingThisWeek = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
-              m.comment_count, m.user_id, u.username as artist,
+              m.comment_count, m.user_id, m.description, m.lyrics, u.username as artist,
               (m.views + m.likes_count * 2 + m.comment_count * 3) AS score
        FROM media m
        JOIN users u ON m.user_id = u.id
@@ -518,7 +518,7 @@ exports.getMostViewed = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
-              m.comment_count, m.user_id, u.username as artist
+              m.comment_count, m.user_id, m.description, m.lyrics, u.username as artist
        FROM media m
        JOIN users u ON m.user_id = u.id
        WHERE m.is_public = 1 AND m.type = 'audio'
@@ -538,7 +538,7 @@ exports.getFollowedTracks = async (req, res) => {
     const userId = req.user.id;
     const [rows] = await pool.query(
       `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
-              m.comment_count, m.user_id, u.username as artist
+              m.comment_count, m.user_id, m.description, m.lyrics, u.username as artist
        FROM media m
        JOIN follows f ON m.user_id = f.following_id
        JOIN users u ON m.user_id = u.id
@@ -560,7 +560,7 @@ exports.getGenreMix = async (req, res) => {
     const userId = req.user.id;
     const [rows] = await pool.query(
       `SELECT DISTINCT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count,
-              m.created_at, m.user_id, u.username as artist
+              m.created_at, m.user_id, m.description, m.lyrics, u.username as artist
        FROM media m
        JOIN media_genres mg ON m.id = mg.media_id
        JOIN users u ON m.user_id = u.id
@@ -606,9 +606,11 @@ exports.getPublicUserTracks = async (req, res) => {
 exports.getTracksByGenre = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count,
+              m.comment_count, m.user_id, m.description, m.lyrics, u.username as artist
        FROM media m
        JOIN media_genres mg ON m.id = mg.media_id
+       JOIN users u ON m.user_id = u.id
        WHERE mg.genre_id = ? AND m.is_public = 1 AND m.type = 'audio'
        ORDER BY m.created_at DESC
        LIMIT 20`,
