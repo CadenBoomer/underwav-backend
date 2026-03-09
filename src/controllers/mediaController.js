@@ -588,10 +588,12 @@ exports.getGenreMix = async (req, res) => {
 exports.getPublicUserTracks = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, title, filename, cover_image, views, likes_count, comment_count
-       FROM media
-       WHERE user_id = ? AND is_public = 1 AND type = 'audio'
-       ORDER BY created_at DESC`,
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, 
+              m.comment_count, m.user_id, m.description, m.lyrics, u.username as artist
+       FROM media m
+       JOIN users u ON m.user_id = u.id
+       WHERE m.user_id = ? AND m.is_public = 1 AND m.type = 'audio'
+       ORDER BY m.created_at DESC`,
       [req.params.id]
     );
     res.json(rows);
@@ -622,3 +624,4 @@ exports.getTracksByGenre = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+

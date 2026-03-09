@@ -640,6 +640,7 @@ exports.getPublicProfile = async (req, res) => {
   try {
     const [rows] = await pool.query(
       `SELECT id, username, avatar, bio, city, country, created_at,
+              first_name, last_name, phone,
               CASE WHEN show_email = 1 THEN email ELSE NULL END as email
        FROM users WHERE id = ?`,
       [req.params.id]
