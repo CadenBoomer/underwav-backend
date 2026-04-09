@@ -99,36 +99,61 @@ const sendEmail = require('../utils/email');
 
 //For Signup with email verification token
 exports.signup = async (req, res) => {
+  // Destructures the three fields out of the request body. The frontend sends these as JSON in the POST body.
   const { username, email, password } = req.body;
 
+  // Guards against missing fields. !username is true if username is undefined, null, or empty string. 
+  // return stops the function immediately so nothing below runs if validation fails. 400 means Bad Request — 
+  // the client sent incomplete data.
   if (!username || !email || !password)
     return res.status(400).json({ message: 'All fields required' });
 
   try {
-    // Check if email exists
+    // Queries the database for any user with that email. Only selects id — no need to fetch the whole row, 
+    // just checking existence. [existing] destructures the rows array out of the query result. await pauses
+    //  here until the database responds.
     const [existing] = await pool.query(
       'SELECT id FROM users WHERE email = ?',
       [email]
     );
 
+    //If email already exists, return error
     if (existing.length > 0)
       return res.status(400).json({ message: 'Email already exists' });
 
-    // Hash password. Salting 10. 
+    // Hash password. Salting 10. Hashes the password before storing it. 10 is the salt rounds — 
+    // bcrypt generates random data and mixes it into the hash 2^10 = 1024 times. This means even if 
+    // two users have the same password, their hashes will be different. await because hashing is 
+    // intentionally slow (that's what makes it secure).
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user (unverified by default)
+    // Inserts the new user into the database. Stores hashedPassword not the plain text. is_verified = false
+    //  by default — they can't log in until they verify their email. The ? placeholders get replaced by the
+    //  array values in order, safely escaping them to prevent SQL injection.
     const [result] = await pool.query(
       'INSERT INTO users (username, email, password, is_verified) VALUES (?, ?, ?, false)',
       [username, email, hashedPassword]
     );
 
+    // insertId is automatically returned by MySQL after an INSERT — it's the auto-incremented ID of the
+    //  newly created row. You need this to link the verification token to the correct user.
     const userId = result.insertId;
 
     // Create verification token
+    // crypto.randomBytes(32) generates 32 completely random bytes using Node's built-in 
+    //  module. .toString('hex') converts those bytes to a 64-character hex string. This is 
+    // cryptographically secure — unguessable.
     const token = crypto.randomBytes(32).toString('hex');
+
+    // Date.now() returns the current time in milliseconds. The math is 
+    // 24 hours × 60 minutes × 60 seconds × 1000ms = 86,400,000ms added to now. 
+    // new Date() wraps it into a proper date object MySQL can store.
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+
+    // Stores the token in its own separate table linked to the user by userId. This is why you needed 
+    // insertId — so the token knows which user it belongs to.
     await pool.query(
       'INSERT INTO verification_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
       [userId, token, expiresAt]
@@ -209,6 +234,7 @@ exports.refreshToken = async (req, res) => {
   try {
 
     //req.body is an object. So doing const token = req.body will not work in db.
+    //Reads token from url
     const { token } = req.body;
     if (!token) return res.status(400).json({ message: 'Token required' });
 
@@ -219,15 +245,32 @@ exports.refreshToken = async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM refresh_tokens WHERE token = ?', [token]);
     if (rows.length === 0) return res.status(400).json({ message: 'Invalid token' });
 
+    //Pulls the first and only token found in the array
     const tokenRow = rows[0];
 
+    // new Date(tokenRow.expires_at) converts the stored database timestamp to a JavaScript Date object. 
+    // new Date() with no arguments is right now. If the expiry is before now, the token is expired. 
+    // The < comparison works on Date objects because JavaScript compares their underlying millisecond values.
     if (new Date(tokenRow.expires_at) < new Date()) {
       return res.status(400).json({ message: 'Token expired' });
     }
 
     //Create new access token
+    // Uses the user_id stored on the token row to fetch the actual user. Only selects id and email because those
+    //  are the only two fields going into the JWT payload — no need to fetch the whole user row.
     const [userRows] = await pool.query('SELECT id, email FROM users WHERE id = ?', [tokenRow.user_id]);
     const user = userRows[0];
+
+    // jwt.sign() takes three arguments:
+    // { id: user.id, email: user.email } — the payload, data embedded inside the token. This is what 
+    // your auth middleware later decodes to get req.user.id
+    // process.env.JWT_SECRET — a long secret string from your .env file used to sign the token. 
+    // If someone knew this they could forge tokens, so it never gets committed to code
+    // { expiresIn: '15m' } — this new access token only lasts 15 minutes. It's short on purpose — 
+    // the refresh token lives longer and is used to keep getting new short-lived access tokens without 
+    // re-logging in
+
+    // Returns the new token as JSON so the frontend can store it and use it for requests.
 
     const jwtToken = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '15m' });
     res.json({ token: jwtToken });

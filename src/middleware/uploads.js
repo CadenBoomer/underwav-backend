@@ -155,10 +155,10 @@ module.exports = upload;
 
 // And sometimes the mimetype can be spoofed by the client.
 // So currently:
-// You limit file size ✅
-// You organize folders ✅
-// You generate unique names ✅
-// But you don’t strictly restrict allowed file types ❌
+// You limit file size 
+// You organize folders 
+// You generate unique names 
+// But you don’t strictly restrict allowed file types 
 
 
 //What You Should Add: fileFilter

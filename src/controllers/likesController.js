@@ -121,3 +121,33 @@ exports.getLikes = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+
+
+// req.user.id — this comes from your auth middleware which reads the JWT token and attaches 
+// the user object to the request. So req.user is always the logged in user.
+// { id: mediaId } — destructuring with rename. Takes req.params.id and assigns it to a variable 
+// called mediaId instead. Just cleaner than writing req.params.id everywhere.
+// Checks for existing like first to prevent duplicates, inserts the like, increments the count with 
+// likes_count + 1, then fetches the updated count to send back
+
+// [[media]] — double destructuring. pool.query returns [rows, fields], and since you expect exactly 
+// one row, the inner [media] pulls out just that first row. So media.likes_count gives you the number directly.
+// unlike
+
+// Deletes the like row, checks result.affectedRows === 0 — if nothing was deleted it means the media 
+// wasn't liked in the first place, so returns a 400
+// likes_count > 0 in the UPDATE is a safety guard — prevents the count going negative if something gets
+//  out of sync
+
+// getProfileLikes
+
+// SQL JOIN — connects two tables together. JOIN likes l ON m.id = l.media_id means only return media rows 
+// that have a matching entry in the likes table for this user. SELECT m.* returns all columns from the media 
+// table for those matches.
+
+// getLikes
+
+// Public endpoint, no auth needed
+// Joins in the opposite direction — starts from likes, joins to users to get their username. Returns just 
+// id and username, not the full user object, since that's all you need for a likes list

@@ -136,7 +136,7 @@ exports.search = async (req, res) => {
     }
 
     const [tracks] = await pool.query(
-      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count,
+      `SELECT m.id, m.title, m.filename, m.cover_image, m.views, m.likes_count, m.description, m.lyrics, m.user_id,
               u.username as artist
        FROM media m
        JOIN users u ON m.user_id = u.id

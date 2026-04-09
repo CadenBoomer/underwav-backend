@@ -179,8 +179,7 @@ exports.updateMedia = async (req, res) => {
 
     if (is_public !== undefined) {
       fields.push('is_public = ?');
-      // Ensure boolean is 0 or 1
-      values.push(is_public ? 1 : 0);
+      values.push(is_public === '1' || is_public === 1 ? 1 : 0);
     }
 
     if (cover) {
@@ -239,12 +238,14 @@ exports.getUserMedia = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const [rows] = await pool.query(
-      `SELECT id, type, filename, original_name, title, cover_image, 
-              description, lyrics, created_at, is_public, views, likes_count, comment_count
-       FROM media 
-       WHERE user_id = ?
-       ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
+      `SELECT m.id, m.type, m.filename, m.original_name, m.title, m.cover_image, 
+        m.description, m.lyrics, m.created_at, m.is_public, m.views, m.likes_count, 
+        m.comment_count, m.user_id, u.username as artist
+    FROM media m
+ JOIN users u ON m.user_id = u.id
+ WHERE m.user_id = ?
+ ORDER BY m.created_at DESC
+      LIMIT ? OFFSET ?`,
       [req.user.id, limit, offset]
     );
 
@@ -472,7 +473,7 @@ exports.getTrendingMedia = async (req, res) => {
   }
 };
 
-// Recently Uploaded (public)
+
 // Recently Uploaded (public)
 exports.getRecentPublic = async (req, res) => {
   try {
